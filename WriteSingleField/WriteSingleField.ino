@@ -12,27 +12,32 @@ unsigned long myChannelNumber = SECRET_CH_ID;
 const char * myWriteAPIKey = SECRET_WRITE_APIKEY;
 
 // Pines LEDs
-const int ledVerde1 = 5;
-const int ledVerde2 = 4;
-const int ledAmarillo = 0;
-const int ledRojo = 2;
+const int ledVerde1 = 13;
+const int ledVerde2 = 12;
+const int ledAmarillo = 4;
+const int ledRojo = 14;
+const int ledReferencia = 3; 
+
+// Variables
+unsigned long ultimaActualizacion = 0; // Para llevar control del tiempo de envío
+const unsigned long intervaloEnvio = 20000; 
 
 void setup() {
   Serial.begin(115200);  
   WiFi.mode(WIFI_STA); 
-  ThingSpeak.begin(client);  // Inicializa ThingSpeak
+  ThingSpeak.begin(client);  //ThingSpeak
 
-  
   pinMode(ledVerde1, OUTPUT);
   pinMode(ledVerde2, OUTPUT);
   pinMode(ledAmarillo, OUTPUT);
   pinMode(ledRojo, OUTPUT);
+  pinMode(ledReferencia, OUTPUT); 
 
-  
   digitalWrite(ledVerde1, LOW);
   digitalWrite(ledVerde2, LOW);
   digitalWrite(ledAmarillo, LOW);
   digitalWrite(ledRojo, LOW);
+  digitalWrite(ledReferencia, LOW); 
 }
 
 void loop() {
@@ -48,55 +53,60 @@ void loop() {
     Serial.println("\nConectado a WiFi.");
   }
 
-  // Lectura del sensor UV
+  
   int valorAnalogico = analogRead(A0);             
   float voltaje = valorAnalogico * (3.3 / 1023.0); 
-  float indiceUV = voltaje * 11.0;                 
+  float indiceUV = voltaje / (3.3 / 60.0);                 
 
-  // Muestra los valores en la consola
+  
   Serial.print("Voltaje: ");
   Serial.print(voltaje);
   Serial.print(" V, Indice UV: ");
   Serial.println(indiceUV);
 
-  // Control de los LEDs según el índice UV
-  int estadoVerde1 = 0, estadoVerde2 = 0, estadoAmarillo = 0, estadoRojo = 0;
-
-  if (indiceUV >= 0 && indiceUV <= 2) {
-    digitalWrite(ledVerde1, HIGH); estadoVerde1 = 1;
+  
+  if (indiceUV >= 0 && indiceUV <= 1) {
+    digitalWrite(ledVerde1, HIGH);
     digitalWrite(ledVerde2, LOW); 
     digitalWrite(ledAmarillo, LOW); 
     digitalWrite(ledRojo, LOW);
-  } else if (indiceUV >= 3 && indiceUV <= 5) {
+  } else if (indiceUV >= 2 && indiceUV <= 3) {
     digitalWrite(ledVerde1, LOW); 
-    digitalWrite(ledVerde2, HIGH); estadoVerde2 = 1;
+    digitalWrite(ledVerde2, HIGH);
     digitalWrite(ledAmarillo, LOW); 
     digitalWrite(ledRojo, LOW);
-  } else if (indiceUV >= 6 && indiceUV <= 7) {
+  } else if (indiceUV >= 4) {
     digitalWrite(ledVerde1, LOW); 
     digitalWrite(ledVerde2, LOW); 
-    digitalWrite(ledAmarillo, HIGH); estadoAmarillo = 1;
+    digitalWrite(ledAmarillo, HIGH);
     digitalWrite(ledRojo, LOW);
-  } else if (indiceUV >= 8) {
-    digitalWrite(ledVerde1, LOW); 
-    digitalWrite(ledVerde2, LOW); 
-    digitalWrite(ledAmarillo, LOW); 
-    digitalWrite(ledRojo, HIGH); estadoRojo = 1;
   }
 
-  // Envía los datos a ThingSpeak
-  ThingSpeak.setField(1, indiceUV);      
-  ThingSpeak.setField(2, estadoVerde1); 
-  ThingSpeak.setField(3, estadoVerde2); 
-  ThingSpeak.setField(4, estadoAmarillo); 
-  ThingSpeak.setField(5, estadoRojo);    
-
-  int httpCode = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
-  if (httpCode == 200) {
-    Serial.println("Actualización exitosa en ThingSpeak.");
-  } else {
-    Serial.println("Error al actualizar en ThingSpeak. Código HTTP: " + String(httpCode));
+  
+  int estadoLedReferencia = ThingSpeak.readLongField(myChannelNumber, 6, SECRET_READ_APIKEY);
+  if (estadoLedReferencia == 1) {
+    digitalWrite(ledReferencia, HIGH); 
+  } else if (estadoLedReferencia == 0) {
+    digitalWrite(ledReferencia, LOW);  
   }
 
-  delay(20000); // Espera 20 segundos antes de la próxima actualización
+  
+  if (millis() - ultimaActualizacion >= intervaloEnvio) {
+    ThingSpeak.setField(1, indiceUV);      
+    ThingSpeak.setField(2, digitalRead(ledVerde1)); 
+    ThingSpeak.setField(3, digitalRead(ledVerde2)); 
+    ThingSpeak.setField(4, digitalRead(ledAmarillo)); 
+    ThingSpeak.setField(5, digitalRead(ledRojo));    
+
+    int httpCode = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+    if (httpCode == 200) {
+      Serial.println("Actualización exitosa en ThingSpeak.");
+    } else {
+      Serial.println("Error al actualizar en ThingSpeak. Código HTTP: " + String(httpCode));
+    }
+
+    ultimaActualizacion = millis(); 
+  }
+
+  delay(300); 
 }
